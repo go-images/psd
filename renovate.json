@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>go-richdoc/.github"
+  ],
+  "packageRules": [
+    {
+      "description": "goldmark v2 is a port, not a bump -- see issue #18. The v2 root package is a doc comment: goldmark.New, WithExtensions and the whole top-level API are gone, replaced by composing parser.New() with a renderer. The AST changed too: Emphasis lost its Level field, Strong became a separate type, CodeSpan now holds a text.MultiLineValue instead of Text children. parse.go alone has 62 goldmark references across 21 node types. Renovate cannot perform that, and the pull request has been red on all eleven lanes every time it reopens.",
+      "matchPackageNames": [
+        "github.com/yuin/goldmark"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    }
+  ]
+}

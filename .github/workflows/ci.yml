@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GOWORK: "off"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # The race detector needs cgo at test time; the library itself stays
+    # CGO-free, which the cross-build job proves with CGO_ENABLED=0.
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt needs to be run on:"
+            echo "$out"
+            exit 1
+          fi
+      - name: Vet
+        run: CGO_ENABLED=0 go vet ./...
+      - name: Test with coverage (race)
+        run: go test -race -covermode=atomic -coverprofile=cover.out ./...
+      - name: Enforce 100% coverage
+        run: |
+          go tool cover -func=cover.out
+          # ⛔ THE PROFILE, NOT THE PERCENTAGE. "total: 99.95%" prints as
+          # 100.0%, so a gate reading the rounded figure passes with blocks
+          # nobody ran.
+          #
+          # ⛔ And the test is NOT a grep for a trailing zero. A profile line
+          # is `file:from,to numStatements hitCount`, and a package whose
+          # types carry marker methods has lines ending in " 0 0": zero
+          # statements, zero hits. Those are EMPTY blocks, not unrun ones, and
+          # a grep on the hit count alone fails a package for having them --
+          # measured on go-richdoc/richdoc, where twenty-two of them make
+          # Block and Inline closed sets.
+          uncovered=$(awk '$NF == 0 && $(NF-1) > 0' cover.out)
+          if [ -n "$uncovered" ]; then
+            echo "::error::these blocks were never entered"
+            echo "$uncovered"
+            exit 1
+          fi
+          echo "every block with a statement in it was entered"
+
+  cross-build:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - linux/amd64
+          - linux/arm64
+          - linux/riscv64
+          - linux/ppc64le
+          - linux/s390x
+          - linux/loong64
+          - darwin/amd64
+          - darwin/arm64
+          - windows/amd64
+          - js/wasm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Build ${{ matrix.target }}
+        run: |
+          export GOOS=$(echo "${{ matrix.target }}" | cut -d/ -f1)
+          export GOARCH=$(echo "${{ matrix.target }}" | cut -d/ -f2)
+          go build ./...
